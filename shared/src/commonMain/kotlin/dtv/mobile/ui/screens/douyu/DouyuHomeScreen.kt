@@ -1,0 +1,263 @@
+package dtv.mobile.ui.screens.douyu
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import dtv.mobile.model.Streamer
+import dtv.mobile.repo.DouyuCate1
+import dtv.mobile.repo.DouyuCate2
+import dtv.mobile.repo.DouyuCate3
+import dtv.mobile.repo.PagedResult
+import dtv.mobile.state.AppState
+import dtv.mobile.ui.components.StreamerCard
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private const val PAGE_SIZE = 20
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DouyuHomeScreen(
+  appState: AppState,
+  modifier: Modifier = Modifier,
+) {
+  var categories: List<DouyuCate1> by remember { mutableStateOf(emptyList()) }
+  var selectedCate1: DouyuCate1? by remember { mutableStateOf(null) }
+  var selectedCate2: DouyuCate2? by remember { mutableStateOf(null) }
+  var cate3List: List<DouyuCate3> by remember { mutableStateOf(emptyList()) }
+  var selectedCate3: DouyuCate3? by remember { mutableStateOf(null) }
+
+  var rooms: List<Streamer> by remember { mutableStateOf(emptyList()) }
+  var loading by remember { mutableStateOf(true) }
+  var loadingMore by remember { mutableStateOf(false) }
+  var hasMore by remember { mutableStateOf(true) }
+  var page by remember { mutableStateOf(0) } // cate2 uses offset; cate3 uses page+1
+
+  var showCate1Sheet by remember { mutableStateOf(false) }
+
+  val gridState = rememberLazyGridState()
+  val scope = rememberCoroutineScope()
+
+  LaunchedEffect(Unit) {
+    loading = true
+    val data = appState.repo.fetchDouyuCategories()
+    categories = data.cate1List
+    selectedCate1 = data.cate1List.firstOrNull()
+    selectedCate2 = selectedCate1?.cate2List?.firstOrNull()
+    loading = false
+  }
+
+  LaunchedEffect(selectedCate2?.id) {
+    val cate2Id = selectedCate2?.id ?: return@LaunchedEffect
+    cate3List = appState.repo.fetchDouyuThreeCate(cate2Id)
+    selectedCate3 = null
+  }
+
+  suspend fun loadPage(reset: Boolean) {
+    val cate2 = selectedCate2 ?: return
+    if (reset) {
+      rooms = emptyList()
+      hasMore = true
+      page = 0
+    }
+    if (!hasMore) return
+
+    if (reset) loading = true else loadingMore = true
+    val result: PagedResult<Streamer> = if (selectedCate3 != null) {
+      appState.repo.fetchDouyuLiveListByCate3(
+        cate3Id = selectedCate3!!.id,
+        page = (page + 1).coerceAtLeast(1),
+        limit = PAGE_SIZE,
+      )
+    } else {
+      appState.repo.fetchDouyuLiveListByCate2(
+        cate2Id = cate2.id,
+        offset = page * PAGE_SIZE,
+        limit = PAGE_SIZE,
+      )
+    }
+
+    val next = if (reset) result.items else rooms + result.items
+    rooms = next
+
+    hasMore = result.items.size == PAGE_SIZE
+    page += 1
+    if (reset) loading = false else loadingMore = false
+  }
+
+  LaunchedEffect(selectedCate2?.id, selectedCate3?.id) {
+    if (selectedCate2 == null) return@LaunchedEffect
+    // small debounce to avoid double refresh when cate2 -> cate3 list updates
+    delay(60)
+    loadPage(reset = true)
+    gridState.scrollToItem(0)
+  }
+
+  LaunchedEffect(gridState, loading, loadingMore, hasMore, rooms.size) {
+    if (loading) return@LaunchedEffect
+    snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+      .map { lastVisible -> lastVisible >= (rooms.size - 4).coerceAtLeast(0) }
+      .distinctUntilChanged()
+      .filter { it }
+      .collectLatest {
+        if (hasMore && !loadingMore) {
+          loadPage(reset = false)
+        }
+      }
+  }
+
+  if (showCate1Sheet) {
+    ModalBottomSheet(onDismissRequest = { showCate1Sheet = false }) {
+      Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("选择大类", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 10.dp))
+        categories.forEach { c1 ->
+          val selected = c1.id == selectedCate1?.id
+          TextButton(
+            onClick = {
+              selectedCate1 = c1
+              selectedCate2 = c1.cate2List.firstOrNull()
+              showCate1Sheet = false
+            },
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Text(text = c1.name, color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+          }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+      }
+    }
+  }
+
+  Column(modifier = modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+      TextButton(onClick = { showCate1Sheet = true }) {
+        Text(text = selectedCate1?.name ?: "分类", style = MaterialTheme.typography.titleMedium)
+      }
+      TextButton(onClick = { scope.launch { loadPage(reset = true) } }) { Text("刷新") }
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+    Cate2Chips(
+      cate2List = selectedCate1?.cate2List.orEmpty(),
+      selectedId = selectedCate2?.id,
+      onSelect = { selectedCate2 = it },
+    )
+
+    if (cate3List.isNotEmpty()) {
+      Spacer(modifier = Modifier.height(8.dp))
+      Cate3Chips(
+        cate3List = cate3List,
+        selectedId = selectedCate3?.id,
+        onSelect = { selectedCate3 = it },
+      )
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    LazyVerticalGrid(
+      modifier = Modifier.fillMaxSize(),
+      state = gridState,
+      columns = GridCells.Fixed(2),
+      contentPadding = PaddingValues(bottom = 92.dp),
+      verticalArrangement = Arrangement.spacedBy(10.dp),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      if (loading) {
+        items(6, span = { GridItemSpan(1) }) { idx ->
+          StreamerCard(
+            streamer = Streamer(
+              platform = dtv.mobile.model.Platform.Douyu,
+              roomId = "loading-$idx",
+              name = "加载中…",
+              title = "正在请求斗鱼数据",
+              viewerText = "",
+              isLive = true,
+            ),
+            onClick = {},
+          )
+        }
+      } else {
+        items(rooms.size, key = { rooms[it].roomId }, span = { GridItemSpan(1) }) { index ->
+          val streamer = rooms[index]
+          StreamerCard(streamer = streamer, onClick = { appState.openPlayer(streamer) })
+        }
+
+        item(span = { GridItemSpan(2) }) {
+          Spacer(modifier = Modifier.height(4.dp))
+          when {
+            loadingMore -> Text("加载更多…", style = MaterialTheme.typography.bodyMedium)
+            hasMore -> Text("继续滑动加载更多", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+            else -> Text("没有更多了", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun Cate2Chips(
+  cate2List: List<DouyuCate2>,
+  selectedId: String?,
+  onSelect: (DouyuCate2) -> Unit,
+) {
+  LazyRow(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    items(cate2List, key = { it.id }) { c2 ->
+      FilterChip(selected = c2.id == selectedId, onClick = { onSelect(c2) }, label = { Text(c2.name) })
+    }
+  }
+}
+
+@Composable
+private fun Cate3Chips(
+  cate3List: List<DouyuCate3>,
+  selectedId: String?,
+  onSelect: (DouyuCate3?) -> Unit,
+) {
+  LazyRow(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    item {
+      FilterChip(selected = selectedId == null, onClick = { onSelect(null) }, label = { Text("全部") })
+    }
+    items(cate3List, key = { it.id }) { c3 ->
+      FilterChip(selected = c3.id == selectedId, onClick = { onSelect(c3) }, label = { Text(c3.name) })
+    }
+  }
+}

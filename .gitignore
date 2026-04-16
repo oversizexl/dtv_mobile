@@ -1,0 +1,27 @@
+/.gradle/
+/.kotlin/
+/build/
+/local.properties
+/.idea/
+/*.iml
+
+/androidApp/build/
+/shared/build/
+
+**/out/
+**/.DS_Store
+
+# Do not publish desktop project
+/DTV-heroui/
+
+# Logs
+*.log
+dtv*.log
+
+# Common Android/Kotlin artifacts
+**/.idea/
+**/.gradle/
+**/build/
+**/*.apk
+**/*.aab
+**/*.hprof

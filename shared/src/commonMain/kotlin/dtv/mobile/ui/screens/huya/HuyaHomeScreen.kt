@@ -1,0 +1,150 @@
+package dtv.mobile.ui.screens.huya
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import dtv.mobile.model.Streamer
+import dtv.mobile.repo.PagedResult
+import dtv.mobile.state.AppState
+import dtv.mobile.ui.components.StreamerCard
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+
+private const val PAGE_SIZE = 20
+
+private data class HuyaGid(val id: String, val name: String)
+
+@Composable
+fun HuyaHomeScreen(
+  appState: AppState,
+  modifier: Modifier = Modifier,
+) {
+  val gids = remember {
+    listOf(
+      HuyaGid("1", "网游竞技"),
+      HuyaGid("2", "单机热游"),
+      HuyaGid("8", "娱乐天地"),
+      HuyaGid("2168", "一起看"),
+    )
+  }
+
+  var selectedGid by remember { mutableStateOf(gids.first().id) }
+  var rooms by remember { mutableStateOf<List<Streamer>>(emptyList()) }
+  var loading by remember { mutableStateOf(true) }
+  var loadingMore by remember { mutableStateOf(false) }
+  var hasMore by remember { mutableStateOf(true) }
+  var page by remember { mutableStateOf(1) }
+
+  val gridState = rememberLazyGridState()
+
+  suspend fun loadPage(reset: Boolean) {
+    if (reset) {
+      rooms = emptyList()
+      hasMore = true
+      page = 1
+    }
+    if (!hasMore) return
+
+    if (reset) loading = true else loadingMore = true
+    val resp: PagedResult<Streamer> = appState.repo.fetchHuyaLiveList(gid = selectedGid, page = page, limit = PAGE_SIZE)
+    rooms = if (reset) resp.items else rooms + resp.items
+    hasMore = resp.items.size == PAGE_SIZE
+    page += 1
+    if (reset) loading = false else loadingMore = false
+  }
+
+  LaunchedEffect(selectedGid) {
+    loadPage(reset = true)
+    gridState.scrollToItem(0)
+  }
+
+  LaunchedEffect(gridState, loading, loadingMore, hasMore, rooms.size) {
+    if (loading) return@LaunchedEffect
+    snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+      .map { lastVisible -> lastVisible >= (rooms.size - 4).coerceAtLeast(0) }
+      .distinctUntilChanged()
+      .filter { it }
+      .collectLatest {
+        if (hasMore && !loadingMore) {
+          loadPage(reset = false)
+        }
+      }
+  }
+
+  Column(modifier = modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+      items(gids, key = { it.id }) { gid ->
+        FilterChip(
+          selected = gid.id == selectedGid,
+          onClick = { selectedGid = gid.id },
+          label = { Text(gid.name) },
+        )
+      }
+    }
+    Spacer(modifier = Modifier.height(10.dp))
+
+    LazyVerticalGrid(
+      modifier = Modifier.fillMaxSize(),
+      state = gridState,
+      columns = GridCells.Fixed(2),
+      contentPadding = PaddingValues(bottom = 92.dp),
+      verticalArrangement = Arrangement.spacedBy(10.dp),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      if (loading) {
+        items(6, span = { GridItemSpan(1) }) { idx ->
+          StreamerCard(
+            streamer = Streamer(
+              platform = dtv.mobile.model.Platform.Huya,
+              roomId = "loading-$idx",
+              name = "加载中…",
+              title = "正在请求虎牙数据",
+              viewerText = "",
+              isLive = true,
+            ),
+            onClick = {},
+          )
+        }
+      } else {
+        items(rooms.size, key = { rooms[it].roomId }, span = { GridItemSpan(1) }) { index ->
+          val streamer = rooms[index]
+          StreamerCard(streamer = streamer, onClick = { appState.openPlayer(streamer) })
+        }
+
+        item(span = { GridItemSpan(2) }) {
+          Spacer(modifier = Modifier.height(4.dp))
+          when {
+            loadingMore -> Text("加载更多…", style = MaterialTheme.typography.bodyMedium)
+            hasMore -> Text("继续滑动加载更多", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+            else -> Text("没有更多了", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+          }
+        }
+      }
+    }
+  }
+}

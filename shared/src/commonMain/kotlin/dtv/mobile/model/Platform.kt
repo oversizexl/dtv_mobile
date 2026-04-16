@@ -1,0 +1,10 @@
+package dtv.mobile.model
+
+enum class Platform(val title: String) {
+  Custom("自定义"),
+  Douyu("斗鱼"),
+  Huya("虎牙"),
+  Douyin("抖音"),
+  Bilibili("B站"),
+}
+
