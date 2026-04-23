@@ -257,6 +257,13 @@ class BilibiliDanmakuClientAndroid(
     return DanmakuMessage(roomId = "", user = user.ifBlank { "匿名" }, content = content)
   }
 
+  private fun cookieFlagsForLog(cookieHeader: String?): String {
+    val raw = cookieHeader?.lowercase().orEmpty()
+    val hasSessdata = raw.contains("sessdata=")
+    val hasBiliJct = raw.contains("bili_jct=")
+    return "sess=$hasSessdata jct=$hasBiliJct len=${cookieHeader?.length ?: 0}"
+  }
+
   fun observe(roomId: String): Flow<DanmakuMessage> = callbackFlow {
     val socketRef = AtomicReference<WebSocket?>(null)
 
@@ -280,7 +287,11 @@ class BilibiliDanmakuClientAndroid(
         for (ep in info.endpoints) {
           if (!isActive) break
           val wsUrl = if (ep.wssPort == 443) "wss://${ep.host}/sub" else "wss://${ep.host}:${ep.wssPort}/sub"
-          AppLog.i("DTV-Bilibili", "danmaku ws connecting url=$wsUrl roomId=$roomId(real=${info.roomId})")
+          val cookieForWs = cookieProvider()?.trim().orEmpty().ifBlank { "" }
+          AppLog.i(
+            "DTV-Bilibili",
+            "danmaku ws connecting url=$wsUrl roomId=$roomId(real=${info.roomId}) cookie(${cookieFlagsForLog(cookieForWs)})",
+          )
 
           val sessionClosed = CompletableDeferred<Throwable?>()
           val authOk = AtomicBoolean(false)
@@ -291,8 +302,7 @@ class BilibiliDanmakuClientAndroid(
             .addHeader("Referer", "https://live.bilibili.com/")
             .addHeader("Origin", "https://live.bilibili.com")
             .apply {
-              val cookie = cookieProvider()?.trim().orEmpty()
-              if (cookie.isNotEmpty()) addHeader("Cookie", cookie)
+              if (cookieForWs.isNotEmpty()) addHeader("Cookie", cookieForWs)
             }
             .build()
 
