@@ -308,6 +308,7 @@ fun PlayerScreen(
   val videoAspectForDanmaku = videoAspectRatio?.takeIf { it > 0f } ?: 0.75f
   val isVerticalVideo = videoAspectForDanmaku < 1f
   val isHorizontalVideo = !isVerticalVideo
+  val verticalFullBleed = !fullscreen && isVerticalVideo
 
   val content: @Composable () -> Unit = {
     Column(
@@ -316,7 +317,7 @@ fun PlayerScreen(
         .then(if (fullscreen) Modifier.background(Color.Black) else Modifier)
         .then(modifier),
     ) {
-      if (!fullscreen) {
+      if (!fullscreen && !verticalFullBleed) {
         PlayerHeader(
           streamer = streamer,
           onBack = appState::back,
@@ -330,6 +331,8 @@ fun PlayerScreen(
       val videoSurfaceColor = Color.Black
       val videoSurfaceModifier = if (fullscreen) {
         Modifier.fillMaxSize()
+      } else if (verticalFullBleed) {
+        Modifier.fillMaxSize()
       } else {
         Modifier.fillMaxWidth().aspectRatio(layoutAspect)
       }
@@ -341,6 +344,7 @@ fun PlayerScreen(
               url = url!!,
               fullscreen = fullscreen,
               liveMode = true,
+              zoomToFill = verticalFullBleed,
               onVideoAspectRatioChanged = { videoAspectRatio = it },
               onError = {
                 if (it.startsWith("__retry_http__:")) {
@@ -371,6 +375,19 @@ fun PlayerScreen(
                 color = if (fullscreen) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.85f),
               )
             }
+          }
+
+          if (verticalFullBleed) {
+            PlayerHeader(
+              streamer = streamer,
+              onBack = appState::back,
+              followed = streamer?.let(appState::isFollowed) == true,
+              onToggleFollow = { s -> appState.toggleFollow(s) },
+              modifier = Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth(),
+              overlay = true,
+            )
           }
 
           val overlayDanmaku = danmakuEnabled && danmakuMessages.isNotEmpty() && (fullscreen || isVerticalVideo)
@@ -411,7 +428,7 @@ fun PlayerScreen(
         }
       }
 
-      if (!fullscreen) {
+      if (!fullscreen && !verticalFullBleed) {
         if (danmakuEnabled && danmakuMessages.isNotEmpty() && isHorizontalVideo) {
           HubDanmakuPanel(
             messages = danmakuMessages,
@@ -434,9 +451,14 @@ private fun PlayerHeader(
   followed: Boolean,
   onToggleFollow: (Streamer) -> Unit,
   modifier: Modifier = Modifier,
+  overlay: Boolean = false,
 ) {
   val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-  val headerBg = if (isDark) Color.Black else MaterialTheme.colorScheme.surface
+  val headerBg = when {
+    overlay -> Color.Black.copy(alpha = 0.35f)
+    isDark -> Color.Black
+    else -> MaterialTheme.colorScheme.surface
+  }
   val headerFg = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
   val mutedFg = if (isDark) Color(0xFF9CA3AF) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
   val liveDot = if (streamer?.isLive == true) MaterialTheme.colorScheme.primary else Color(0xFF9CA3AF)

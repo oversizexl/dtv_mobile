@@ -25,6 +25,7 @@ actual fun StreamPlayer(
   url: String,
   fullscreen: Boolean,
   liveMode: Boolean,
+  zoomToFill: Boolean,
   onVideoAspectRatioChanged: (Float?) -> Unit,
   onError: (String) -> Unit,
   modifier: Modifier,
@@ -138,14 +139,14 @@ actual fun StreamPlayer(
         useController = true
         controllerAutoShow = true
         setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        resizeMode = if (zoomToFill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
         this.player = player
 
         applyControls(fullscreen = fullscreen, liveMode = liveMode)
       }
     },
     update = { view ->
-      view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+      view.resizeMode = if (zoomToFill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
       view.useController = true
       view.controllerAutoShow = true
       view.player = player
