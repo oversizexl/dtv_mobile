@@ -290,6 +290,10 @@ class BilibiliDanmakuClientAndroid(
             .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
             .addHeader("Referer", "https://live.bilibili.com/")
             .addHeader("Origin", "https://live.bilibili.com")
+            .apply {
+              val cookie = cookieProvider()?.trim().orEmpty()
+              if (cookie.isNotEmpty()) addHeader("Cookie", cookie)
+            }
             .build()
 
           val listener = object : WebSocketListener() {
