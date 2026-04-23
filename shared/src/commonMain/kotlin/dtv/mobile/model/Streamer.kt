@@ -1,5 +1,8 @@
 package dtv.mobile.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class Streamer(
   val platform: Platform,
   val roomId: String,

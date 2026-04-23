@@ -15,8 +15,11 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -32,10 +35,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dtv.mobile.model.Streamer
+import dtv.mobile.model.Platform
 import dtv.mobile.repo.DouyinCate1
 import dtv.mobile.repo.DouyinCate2
 import dtv.mobile.repo.PagedResult
 import dtv.mobile.state.AppState
+import dtv.mobile.state.SubscribedPartition
+import dtv.mobile.ui.components.CategoryPill
 import dtv.mobile.ui.components.StreamerCard
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -148,20 +154,57 @@ fun DouyinHomeScreen(
   Column(modifier = modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
       items(categories, key = { it.name }) { c1 ->
-        FilterChip(
+        CategoryPill(
+          label = c1.name,
           selected = c1.name == selectedCate1?.name,
           onClick = {
             selectedCate1 = c1
             selectedCate2 = c1.cate2List.firstOrNull()
           },
-          label = { Text(c1.name) },
         )
       }
     }
 
     Spacer(modifier = Modifier.height(6.dp))
-    TextButton(onClick = { if (selectedCate1 != null) showCate2Sheet = true }) {
-      Text(text = selectedCate2?.name ?: "选择分类", style = MaterialTheme.typography.titleMedium)
+    val currentPartition: SubscribedPartition? = selectedCate2?.let {
+      SubscribedPartition(
+        id = "douyin:${it.partitionType}:${it.partition}",
+        name = it.name,
+        platform = Platform.Douyin,
+      )
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+      Row(
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+      ) {
+        Text(
+          text = "当前:",
+          style = MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+          color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+        )
+        Text(
+          text = selectedCate2?.name ?: "选择分类",
+          style = MaterialTheme.typography.titleMedium,
+          color = MaterialTheme.colorScheme.onSurface,
+          maxLines = 1,
+          overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        IconButton(onClick = { if (selectedCate1 != null) showCate2Sheet = true }) {
+          Icon(imageVector = Icons.Default.MoreVert, contentDescription = "更多分类")
+        }
+      }
+
+      if (currentPartition != null) {
+        val subscribed = appState.isPartitionSubscribed(currentPartition)
+        TextButton(onClick = { appState.togglePartition(currentPartition) }) {
+          Text(text = if (subscribed) "已订阅" else "订阅")
+        }
+      }
     }
     Spacer(modifier = Modifier.height(10.dp))
 
@@ -184,13 +227,19 @@ fun DouyinHomeScreen(
               viewerText = "",
               isLive = true,
             ),
+            followed = false,
             onClick = {},
           )
         }
       } else {
         items(rooms.size, key = { rooms[it].roomId }, span = { GridItemSpan(1) }) { index ->
           val streamer = rooms[index]
-          StreamerCard(streamer = streamer, onClick = { appState.openPlayer(streamer) })
+          StreamerCard(
+            streamer = streamer,
+            followed = appState.isFollowed(streamer),
+            onClick = { appState.openPlayer(streamer, partition = currentPartition) },
+            onToggleFollow = { appState.toggleFollow(streamer) },
+          )
         }
 
         item(span = { GridItemSpan(2) }) {

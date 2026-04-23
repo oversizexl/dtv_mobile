@@ -1,0 +1,48 @@
+package dtv.mobile.ui.screens
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import dtv.mobile.state.AppState
+import dtv.mobile.ui.components.StreamerCard
+
+@Composable
+fun FollowScreen(
+  appState: AppState,
+  modifier: Modifier = Modifier,
+) {
+  val items = appState.followedStreamers
+
+  if (items.isEmpty()) {
+    Text(
+      text = "还没有关注的主播",
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+      modifier = modifier.fillMaxSize().padding(16.dp),
+    )
+    return
+  }
+
+  LazyColumn(
+    modifier = modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp),
+    contentPadding = PaddingValues(bottom = 12.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    items(items, key = { "${it.platform}-${it.roomId}" }) { s ->
+      StreamerCard(
+        streamer = s,
+        followed = true,
+        onClick = { appState.openPlayer(s) },
+        onToggleFollow = { appState.toggleFollow(s) },
+      )
+    }
+  }
+}

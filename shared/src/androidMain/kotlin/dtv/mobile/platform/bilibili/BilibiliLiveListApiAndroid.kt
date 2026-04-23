@@ -2,6 +2,7 @@ package dtv.mobile.platform.bilibili
 
 import dtv.mobile.model.Platform
 import dtv.mobile.model.Streamer
+import dtv.mobile.util.formatViewerCountWanIfNeeded
 import dtv.mobile.util.normalizeHttpUrl
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -180,8 +181,7 @@ class BilibiliLiveListApiAndroid(
       val online = r["online"].longValueOrNull() ?: 0L
       val viewerStr = when {
         !watchedNum.isNullOrBlank() -> watchedNum
-        online >= 10_000 -> String.format("%.1f万", online / 10_000.0)
-        online > 0 -> online.toString()
+        online > 0 -> formatViewerCountWanIfNeeded(online.toString())
         else -> ""
       }
 

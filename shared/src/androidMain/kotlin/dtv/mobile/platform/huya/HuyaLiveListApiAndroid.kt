@@ -2,6 +2,7 @@ package dtv.mobile.platform.huya
 
 import dtv.mobile.model.Platform
 import dtv.mobile.model.Streamer
+import dtv.mobile.util.formatViewerCountWanIfNeeded
 import dtv.mobile.util.normalizeHttpUrl
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -44,7 +45,7 @@ class HuyaLiveListApiAndroid(
       val avatar = normalizeHttpUrl(obj["sAvatar180"].stringValueOrNull())
       val cover = normalizeHttpUrl(obj["sScreenshot"].stringValueOrNull())
       val userCount = obj["lUserCount"]?.jsonPrimitive?.longOrNull ?: 0L
-      val viewerStr = if (userCount >= 10_000) String.format("%.1f万", userCount / 10_000.0) else userCount.toString()
+      val viewerStr = formatViewerCountWanIfNeeded(userCount.toString())
 
       Streamer(
         platform = Platform.Huya,

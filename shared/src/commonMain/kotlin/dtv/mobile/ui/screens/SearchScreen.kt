@@ -114,7 +114,9 @@ fun SearchScreen(
         items(results, key = { "${it.platform}-${it.roomId}" }) { s ->
           StreamerCard(
             streamer = s,
+            followed = appState.isFollowed(s),
             onClick = { appState.openPlayer(s) },
+            onToggleFollow = { appState.toggleFollow(s) },
           )
         }
       }

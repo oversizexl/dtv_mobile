@@ -15,8 +15,11 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -32,11 +35,14 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dtv.mobile.model.Streamer
+import dtv.mobile.model.Platform
 import dtv.mobile.repo.DouyuCate1
 import dtv.mobile.repo.DouyuCate2
 import dtv.mobile.repo.DouyuCate3
 import dtv.mobile.repo.PagedResult
 import dtv.mobile.state.AppState
+import dtv.mobile.state.SubscribedPartition
+import dtv.mobile.ui.components.CategoryPill
 import dtv.mobile.ui.components.StreamerCard
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -66,6 +72,7 @@ fun DouyuHomeScreen(
   var page by remember { mutableStateOf(0) } // cate2 uses offset; cate3 uses page+1
 
   var showCate1Sheet by remember { mutableStateOf(false) }
+  var showCate2Sheet by remember { mutableStateOf(false) }
 
   val gridState = rememberLazyGridState()
   val scope = rememberCoroutineScope()
@@ -160,6 +167,27 @@ fun DouyuHomeScreen(
     }
   }
 
+  if (showCate2Sheet) {
+    ModalBottomSheet(onDismissRequest = { showCate2Sheet = false }) {
+      Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("选择分类", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 10.dp))
+        selectedCate1?.cate2List.orEmpty().forEach { c2 ->
+          val selected = c2.id == selectedCate2?.id
+          TextButton(
+            onClick = {
+              selectedCate2 = c2
+              showCate2Sheet = false
+            },
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Text(text = c2.name, color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+          }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+      }
+    }
+  }
+
   Column(modifier = modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
       TextButton(onClick = { showCate1Sheet = true }) {
@@ -169,11 +197,53 @@ fun DouyuHomeScreen(
     }
 
     Spacer(modifier = Modifier.height(6.dp))
-    Cate2Chips(
-      cate2List = selectedCate1?.cate2List.orEmpty(),
-      selectedId = selectedCate2?.id,
-      onSelect = { selectedCate2 = it },
-    )
+    val currentPartition: SubscribedPartition? = when {
+      selectedCate3 != null -> SubscribedPartition(
+        id = "douyu:c3:${selectedCate3!!.id}",
+        name = selectedCate3!!.name,
+        platform = Platform.Douyu,
+      )
+      selectedCate2 != null -> SubscribedPartition(
+        id = "douyu:c2:${selectedCate2!!.id}",
+        name = selectedCate2!!.name,
+        platform = Platform.Douyu,
+      )
+      else -> null
+    }
+
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+      Row(
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+      ) {
+        Text(
+          text = "当前:",
+          style = MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+          color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+        )
+        Text(
+          text = currentPartition?.name ?: "选择分类",
+          style = MaterialTheme.typography.titleMedium,
+          color = MaterialTheme.colorScheme.onSurface,
+          maxLines = 1,
+          overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        IconButton(onClick = { if (selectedCate1 != null) showCate2Sheet = true }) {
+          Icon(imageVector = Icons.Default.MoreVert, contentDescription = "更多分类")
+        }
+      }
+
+      if (currentPartition != null) {
+        val subscribed = appState.isPartitionSubscribed(currentPartition)
+        TextButton(onClick = { appState.togglePartition(currentPartition) }) {
+          Text(text = if (subscribed) "已订阅" else "订阅")
+        }
+      }
+    }
 
     if (cate3List.isNotEmpty()) {
       Spacer(modifier = Modifier.height(8.dp))
@@ -205,13 +275,19 @@ fun DouyuHomeScreen(
               viewerText = "",
               isLive = true,
             ),
+            followed = false,
             onClick = {},
           )
         }
       } else {
         items(rooms.size, key = { rooms[it].roomId }, span = { GridItemSpan(1) }) { index ->
           val streamer = rooms[index]
-          StreamerCard(streamer = streamer, onClick = { appState.openPlayer(streamer) })
+          StreamerCard(
+            streamer = streamer,
+            followed = appState.isFollowed(streamer),
+            onClick = { appState.openPlayer(streamer, partition = currentPartition) },
+            onToggleFollow = { appState.toggleFollow(streamer) },
+          )
         }
 
         item(span = { GridItemSpan(2) }) {
@@ -228,22 +304,6 @@ fun DouyuHomeScreen(
 }
 
 @Composable
-private fun Cate2Chips(
-  cate2List: List<DouyuCate2>,
-  selectedId: String?,
-  onSelect: (DouyuCate2) -> Unit,
-) {
-  LazyRow(
-    modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    items(cate2List, key = { it.id }) { c2 ->
-      FilterChip(selected = c2.id == selectedId, onClick = { onSelect(c2) }, label = { Text(c2.name) })
-    }
-  }
-}
-
-@Composable
 private fun Cate3Chips(
   cate3List: List<DouyuCate3>,
   selectedId: String?,
@@ -254,10 +314,18 @@ private fun Cate3Chips(
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     item {
-      FilterChip(selected = selectedId == null, onClick = { onSelect(null) }, label = { Text("全部") })
+      CategoryPill(
+        label = "全部",
+        selected = selectedId == null,
+        onClick = { onSelect(null) },
+      )
     }
     items(cate3List, key = { it.id }) { c3 ->
-      FilterChip(selected = c3.id == selectedId, onClick = { onSelect(c3) }, label = { Text(c3.name) })
+      CategoryPill(
+        label = c3.name,
+        selected = c3.id == selectedId,
+        onClick = { onSelect(c3) },
+      )
     }
   }
 }

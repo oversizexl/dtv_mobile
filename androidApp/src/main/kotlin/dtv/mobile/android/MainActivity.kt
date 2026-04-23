@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.remember
 import dtv.mobile.App
 import dtv.mobile.repo.android.AndroidDtvRepository
+import dtv.mobile.state.SubscriptionStoreAndroid
 import dtv.mobile.util.AppLog
 
 class MainActivity : ComponentActivity() {
@@ -14,7 +15,8 @@ class MainActivity : ComponentActivity() {
     AppLog.init(applicationContext)
     setContent {
       val repo = remember { AndroidDtvRepository(applicationContext) }
-      App(repo = repo)
+      val subscriptionStore = remember { SubscriptionStoreAndroid(applicationContext) }
+      App(repo = repo, subscriptionStore = subscriptionStore)
     }
   }
 }

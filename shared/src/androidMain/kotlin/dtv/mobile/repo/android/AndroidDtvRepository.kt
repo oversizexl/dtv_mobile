@@ -42,6 +42,7 @@ import dtv.mobile.repo.HuyaCate1
 import dtv.mobile.repo.HuyaCate2
 import dtv.mobile.repo.PagedResult
 import dtv.mobile.repo.fake.FakeDtvRepository
+import dtv.mobile.util.formatViewerCountWanIfNeeded
 import dtv.mobile.util.normalizeHttpUrl
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
@@ -292,7 +293,7 @@ class AndroidDtvRepository(
           roomId = s.rid.toString(),
           name = s.nn,
           title = s.rn,
-          viewerText = s.ol.toString(),
+          viewerText = formatViewerCountWanIfNeeded(s.ol.toString()),
           avatarUrl = normalizeHttpUrl(s.av.ifBlank { null }),
           coverUrl = normalizeHttpUrl(s.rs16.ifBlank { null }),
           isLive = s.type?.let { it == 1 } ?: true,
@@ -315,7 +316,7 @@ class AndroidDtvRepository(
           roomId = s.rid.toString(),
           name = s.nn,
           title = s.rn,
-          viewerText = s.ol.toString(),
+          viewerText = formatViewerCountWanIfNeeded(s.ol.toString()),
           avatarUrl = normalizeHttpUrl(s.av.ifBlank { null }),
           coverUrl = normalizeHttpUrl(s.rs16.ifBlank { null }),
           isLive = s.type?.let { it == 1 } ?: true,
@@ -389,7 +390,7 @@ class AndroidDtvRepository(
           roomId = r.webRid,
           name = r.ownerNickname,
           title = r.title,
-          viewerText = r.userCountStr,
+          viewerText = formatViewerCountWanIfNeeded(r.userCountStr),
           avatarUrl = normalizeHttpUrl(r.avatarUrl),
           coverUrl = normalizeHttpUrl(r.coverUrl),
           isLive = true,
