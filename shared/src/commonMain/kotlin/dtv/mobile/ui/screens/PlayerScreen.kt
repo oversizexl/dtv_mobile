@@ -113,6 +113,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import kotlin.math.ceil
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1277,36 +1278,8 @@ private fun ScrollingDanmakuOverlay(
     val track: Int,
   )
 
-  val active = remember(resetKey) { mutableStateListOf<Active>() }
   var lastCount by remember(resetKey) { mutableIntStateOf(0) }
-  var nextTrack by remember(resetKey) { mutableIntStateOf(0) }
-  val maxActive = 30
-
-  LaunchedEffect(messages.size) {
-    if (messages.size <= lastCount) {
-      lastCount = messages.size
-      return@LaunchedEffect
-    }
-    val newItems = messages.subList(lastCount, messages.size)
-    newItems.forEach { msg ->
-      val user = msg.user.trim().ifBlank { "匿名" }
-      val content = msg.content.trim()
-      if (content.isNotEmpty()) {
-        if (active.size >= maxActive) active.removeAt(0)
-        active.add(
-          Active(
-            id = System.nanoTime(),
-            user = user,
-            content = content,
-            track = nextTrack,
-          ),
-        )
-        nextTrack += 1
-        if (nextTrack > 1_000_000) nextTrack = 0
-      }
-    }
-    lastCount = messages.size
-  }
+  val maxActive = 48
 
   BoxWithConstraints(modifier = modifier) {
     val density = LocalDensity.current
@@ -1325,10 +1298,70 @@ private fun ScrollingDanmakuOverlay(
       if (base.lineHeight == TextUnit.Unspecified) fontSizePx * 1.2f else base.lineHeight.toPx()
     }
     val vPadPx = with(density) { 4.dp.toPx() }
-    val minTrackHeightPx = ((lineHeightPx * textScale.coerceAtLeast(0.85f)) + vPadPx * 2f + with(density) { 2.dp.toPx() })
+    val hPadPx = with(density) { 8.dp.toPx() }
+    val trackGapPx = with(density) { 2.dp.toPx() }
+    val minTrackHeightPx = ((lineHeightPx * textScale.coerceAtLeast(0.85f)) + vPadPx * 2f)
       .coerceAtLeast(1f)
-    val trackCount = (usableHeightPx / minTrackHeightPx).toInt().coerceIn(3, 10)
-    val trackHeightPx = usableHeightPx / trackCount
+    val trackStepPx = (minTrackHeightPx + trackGapPx).coerceAtLeast(1f)
+    val trackCount = (usableHeightPx / trackStepPx).toInt().coerceIn(1, 24)
+    val active = remember(resetKey, trackCount) { mutableStateListOf<Active>() }
+    val laneAvailableAt = remember(resetKey, trackCount) { MutableList(trackCount) { 0L } }
+
+    fun estimatedTextWidthPx(user: String, content: String): Float {
+      val text = if (showUser) "$user  $content" else content
+      val weightedChars = text.sumOf { ch ->
+        when {
+          ch.code <= 0x007F -> 1
+          else -> 2
+        }.toInt()
+      }
+      return weightedChars * fontSizePx * textScale.coerceAtLeast(0.85f) * 0.56f + hPadPx * 2f
+    }
+
+    fun chooseTrack(now: Long): Int? {
+      var bestReadyTrack = -1
+      var bestReadyAt = Long.MAX_VALUE
+      laneAvailableAt.forEachIndexed { index, readyAt ->
+        if (readyAt <= now) return index
+        if (readyAt < bestReadyAt) {
+          bestReadyAt = readyAt
+          bestReadyTrack = index
+        }
+      }
+      return bestReadyTrack.takeIf { bestReadyAt <= now + 120L }
+    }
+
+    LaunchedEffect(messages.size, trackCount, widthPx, textScale) {
+      if (messages.size <= lastCount) {
+        lastCount = messages.size
+        return@LaunchedEffect
+      }
+      val newItems = messages.subList(lastCount, messages.size)
+      newItems.forEach { msg ->
+        val user = msg.user.trim().ifBlank { "匿名" }
+        val content = msg.content.trim()
+        if (content.isNotEmpty()) {
+          val now = System.nanoTime() / 1_000_000L
+          val track = chooseTrack(now)
+          if (track != null) {
+            if (active.size >= maxActive) active.removeAt(0)
+            active.add(
+              Active(
+                id = System.nanoTime(),
+                user = user,
+                content = content,
+                track = track,
+              ),
+            )
+            val textWidthPx = estimatedTextWidthPx(user, content).coerceAtLeast(1f)
+            val travelWidthPx = widthPx + textWidthPx
+            val minDelayMs = ceil((textWidthPx / travelWidthPx) * 9000f).toLong() + 80L
+            laneAvailableAt[track] = now + minDelayMs
+          }
+        }
+      }
+      lastCount = messages.size
+    }
 
     active.forEach { item ->
       key(item.id) {
@@ -1341,7 +1374,7 @@ private fun ScrollingDanmakuOverlay(
           opacity = opacity,
           startX = widthPx,
           endX = -widthPx,
-          y = regionTopPx + trackHeightPx * (item.track % trackCount),
+          y = regionTopPx + trackStepPx * (item.track % trackCount),
           onFinished = { active.remove(item) },
         )
       }
