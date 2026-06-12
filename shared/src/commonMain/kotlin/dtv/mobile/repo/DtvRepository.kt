@@ -134,4 +134,11 @@ interface DtvRepository {
   suspend fun mergeBilibiliCookie(cookieHeader: String)
 
   suspend fun clearBilibiliCookie()
+
+  /**
+   * 从抖音直播间链接中解析出 webRid（房间号）。
+   * 支持短链接（v.douyin.com）、直播间页面链接（live.douyin.com）等格式。
+   * 返回 null 表示输入不是有效的抖音链接。
+   */
+  suspend fun resolveDouyinWebRid(input: String): String?
 }

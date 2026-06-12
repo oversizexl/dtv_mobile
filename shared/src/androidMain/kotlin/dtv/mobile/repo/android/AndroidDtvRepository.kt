@@ -13,6 +13,7 @@ import dtv.mobile.platform.bilibili.BilibiliSearchApiAndroid
 import dtv.mobile.platform.bilibili.BilibiliStreamUrlResolverAndroid
 import dtv.mobile.platform.douyin.DouyinWebApiAndroid
 import dtv.mobile.platform.douyin.DouyinDanmakuClientAndroid
+import dtv.mobile.platform.douyin.DouyinUrlParserAndroid
 import dtv.mobile.platform.douyu.DouyuCate2DirectoryApi
 import dtv.mobile.platform.douyu.DouyuCate3DirectoryApi
 import dtv.mobile.platform.douyu.DouyuCategoriesApi
@@ -726,5 +727,9 @@ class AndroidDtvRepository(
 
   override suspend fun clearBilibiliCookie() {
     bilibiliCookieStore.clear()
+  }
+
+  override suspend fun resolveDouyinWebRid(input: String): String? {
+    return DouyinUrlParserAndroid.parseWebRid(input)
   }
 }

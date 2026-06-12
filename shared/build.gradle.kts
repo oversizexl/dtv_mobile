@@ -7,7 +7,13 @@ plugins {
 }
 
 kotlin {
-  androidTarget()
+  androidTarget {
+    compilations.all {
+      kotlinOptions {
+        jvmTarget = "17"
+      }
+    }
+  }
 
   sourceSets {
     val commonMain by getting {
@@ -48,6 +54,7 @@ kotlin {
         implementation("app.cash.quickjs:quickjs-android:0.9.2")
         implementation("androidx.core:core-ktx:1.13.1")
         implementation("androidx.activity:activity-compose:1.9.2")
+        implementation("androidx.media:media:1.7.0")
 
         val media3Version = "1.3.1"
         implementation("androidx.media3:media3-exoplayer:$media3Version")

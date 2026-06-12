@@ -35,6 +35,17 @@ import dtv.mobile.ui.components.StreamerCardStyle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/**
+ * 检测输入是否包含抖音直播链接。
+ */
+private fun containsDouyinLink(input: String): Boolean {
+  val trimmed = input.trim()
+  return "v.douyin.com" in trimmed ||
+    "live.douyin.com" in trimmed ||
+    "webcast.amemv.com" in trimmed ||
+    "douyin.com" in trimmed
+}
+
 @Composable
 fun SearchScreen(
   appState: AppState,
@@ -52,10 +63,12 @@ fun SearchScreen(
   var showBilibiliLoginSheet by remember { mutableStateOf(false) }
   var bilibiliLoggedIn by remember { mutableStateOf(false) }
 
+  var resolvingLink by remember(appState.selectedPlatform) { mutableStateOf(false) }
+
   val placeholder = when (platform) {
     Platform.Huya -> "搜索虎牙主播/房间..."
     Platform.Bilibili -> "搜索B站直播间..."
-    Platform.Douyin -> "输入抖音房间号（webRid）..."
+    Platform.Douyin -> "输入抖音房间号或直播间链接..."
     Platform.Custom -> "自定义分区暂不支持搜索"
     else -> "搜索斗鱼主播/房间..."
   }
@@ -66,12 +79,30 @@ fun SearchScreen(
     if (!supported || trimmed.isEmpty()) {
       results = emptyList()
       loading = false
+      resolvingLink = false
       return@LaunchedEffect
     }
 
     loading = true
     delay(220)
-    runCatching { appState.repo.searchAnchors(platform = platform, keyword = trimmed) }
+
+    // 抖音平台：检测是否为直播间链接，先解析 webRid
+    val searchKeyword = if (platform == Platform.Douyin && containsDouyinLink(trimmed)) {
+      resolvingLink = true
+      val webRid = runCatching { appState.repo.resolveDouyinWebRid(trimmed) }.getOrNull()
+      resolvingLink = false
+      if (webRid.isNullOrBlank()) {
+        results = emptyList()
+        error = "无法解析抖音链接，请检查链接是否正确"
+        loading = false
+        return@LaunchedEffect
+      }
+      webRid
+    } else {
+      trimmed
+    }
+
+    runCatching { appState.repo.searchAnchors(platform = platform, keyword = searchKeyword) }
       .onSuccess { results = it }
       .onFailure {
         results = emptyList()
@@ -147,7 +178,19 @@ fun SearchScreen(
       )
     } else {
       if (loading) {
-        CircularProgressIndicator(modifier = Modifier.padding(top = 6.dp))
+        Column(
+          modifier = Modifier.padding(top = 6.dp),
+          verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+          CircularProgressIndicator()
+          if (resolvingLink) {
+            Text(
+              text = "解析链接中...",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+            )
+          }
+        }
       }
 
       error?.let { msg ->

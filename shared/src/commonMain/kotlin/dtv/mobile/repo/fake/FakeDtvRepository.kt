@@ -166,6 +166,8 @@ class FakeDtvRepository : DtvRepository {
 
   override suspend fun clearBilibiliCookie() {}
 
+  override suspend fun resolveDouyinWebRid(input: String): String? = null
+
   private fun fakeRooms(platform: Platform, start: Int, count: Int): List<Streamer> {
     val titles = listOf(
       "深夜高能整活，来就对了",

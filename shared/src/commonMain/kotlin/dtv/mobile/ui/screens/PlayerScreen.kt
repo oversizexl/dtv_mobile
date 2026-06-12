@@ -51,6 +51,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -82,15 +83,20 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import dtv.mobile.model.Platform
 import dtv.mobile.model.Streamer
+import dtv.mobile.pip.PipBridge
+import dtv.mobile.player.SleepTimerManager
 import dtv.mobile.repo.DanmakuMessage
 import dtv.mobile.repo.DouyuPlayInfo
+import dtv.mobile.service.AudioServiceBridge
 import dtv.mobile.state.AppState
 import dtv.mobile.theme.DtvColors
 import dtv.mobile.ui.components.NetworkImage
+import dtv.mobile.ui.components.SleepTimerDialog
 import dtv.mobile.ui.player.StreamPlayer
 import dtv.mobile.ui.system.FullscreenEffect
 import dtv.mobile.ui.system.PlatformBackHandler
 import dtv.mobile.util.normalizeHttpUrl
+import androidx.compose.material.icons.filled.Headphones
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -140,10 +146,68 @@ fun PlayerScreen(
   var fullscreen by remember(streamer?.roomId) { mutableStateOf(false) }
   var fullscreenEntry by remember(streamer?.roomId) { mutableStateOf(FullscreenEntry.None) }
 
+  // 音频模式
+  var audioMode by remember(streamer?.roomId) { mutableStateOf(false) }
+  var audioPlaying by remember(streamer?.roomId) { mutableStateOf(true) }
+  var showSleepTimerDialog by remember { mutableStateOf(false) }
+  val sleepTimerManager = remember { SleepTimerManager() }
+  val isSleepTimerActive by sleepTimerManager.isActive.collectAsState()
+  val sleepTimerRemaining by sleepTimerManager.remainingSeconds.collectAsState()
+
   val scope = rememberCoroutineScope()
 
+  // 切换直播间时重置音频模式和定时器
+  LaunchedEffect(streamer?.roomId) {
+    audioMode = false
+    audioPlaying = true
+    sleepTimerManager.cancel()
+    AudioServiceBridge.stopService()
+  }
+
+  // 音频模式切换时启动/停止通知服务
+  LaunchedEffect(audioMode, streamer) {
+    if (audioMode && streamer != null) {
+      AudioServiceBridge.startService(
+        streamerName = streamer.name,
+        title = streamer.title,
+        avatarUrl = streamer.avatarUrl,
+      )
+      // 设置通知栏播放/暂停回调
+      AudioServiceBridge.setOnPlayPauseCallback {
+        audioPlaying = !audioPlaying
+        AudioServiceBridge.updatePlaybackState(audioPlaying)
+      }
+      AudioServiceBridge.setOnStopCallback {
+        audioMode = false
+        audioPlaying = true
+        url = null
+      }
+    } else {
+      AudioServiceBridge.stopService()
+    }
+  }
+
+  // 画中画状态同步
+  LaunchedEffect(url, audioMode, loading, error) {
+    PipBridge.pipIsPlaying = url != null && !audioMode && !loading && error == null
+  }
+
   DisposableEffect(Unit) {
-    onDispose { appState.playerFullscreen = false }
+    PipBridge.onPipPlayPause = {
+      // PiP 中的播放/暂停 — 直播流持续播放
+    }
+    PipBridge.onPipFullscreen = {
+      // MainActivity 会处理回到前台
+    }
+
+    onDispose {
+      appState.playerFullscreen = false
+      sleepTimerManager.release()
+      AudioServiceBridge.stopService()
+      PipBridge.onPipPlayPause = null
+      PipBridge.onPipFullscreen = null
+      PipBridge.pipIsPlaying = false
+    }
   }
   LaunchedEffect(fullscreen) {
     appState.playerFullscreen = fullscreen
@@ -427,6 +491,7 @@ fun PlayerScreen(
     val verticalFullBleed = !fullscreen && isVerticalVideo
     val showFullPageLoading = !fullscreen &&
       !verticalFullBleed &&
+      !audioMode &&
       streamer?.isLive == true &&
       url == null &&
       error == null &&
@@ -451,7 +516,7 @@ fun PlayerScreen(
           .fillMaxSize()
           .then(if (fullscreen) Modifier.background(Color.Black) else Modifier),
       ) {
-        if (!fullscreen && !verticalFullBleed) {
+        if (!fullscreen && !verticalFullBleed && !audioMode && !PipBridge.isInPipMode) {
           PlayerHeader(
             streamer = streamer,
             onBack = appState::back,
@@ -476,7 +541,7 @@ fun PlayerScreen(
 
         val videoSurfaceShape = RoundedCornerShape(0.dp)
         val videoSurfaceColor = Color.Black
-        val videoSurfaceModifier = if (fullscreen) {
+        val videoSurfaceModifier = if (fullscreen || audioMode) {
           Modifier.fillMaxSize()
         } else if (verticalFullBleed) {
           Modifier.fillMaxSize()
@@ -504,6 +569,7 @@ fun PlayerScreen(
                 fullscreen = fullscreen,
                 liveMode = true,
                 zoomToFill = verticalFullBleed,
+                paused = audioMode && !audioPlaying,
                 onVideoAspectRatioChanged = {
                   videoAspectRatio = it
                   if (it != null && it > 0f) videoReady = true
@@ -576,6 +642,27 @@ fun PlayerScreen(
             }
           }
 
+            // 音频模式覆盖层
+            if (audioMode && streamer != null && url != null) {
+              val sleepText = if (isSleepTimerActive && sleepTimerRemaining > 0) {
+                val min = sleepTimerRemaining / 60
+                val sec = sleepTimerRemaining % 60
+                "%d:%02d".format(min, sec)
+              } else null
+              AudioPlayerOverlay(
+                streamer = streamer,
+                isPlaying = audioPlaying,
+                onTogglePlayPause = {
+                  audioPlaying = !audioPlaying
+                  AudioServiceBridge.updatePlaybackState(audioPlaying)
+                },
+                onBackToVideo = { audioMode = false },
+                onOpenSleepTimer = { showSleepTimerDialog = true },
+                sleepTimerText = sleepText,
+                modifier = Modifier.fillMaxSize(),
+              )
+            }
+
             if (verticalFullBleed) {
               PlayerHeader(
                 streamer = streamer,
@@ -589,7 +676,7 @@ fun PlayerScreen(
               )
             }
 
-            val overlayDanmaku = canShowDanmaku && (fullscreen || isVerticalVideo)
+            val overlayDanmaku = canShowDanmaku && (fullscreen || isVerticalVideo) && !audioMode
             if (overlayDanmaku) {
               if (fullscreen && isHorizontalVideo) {
                 ScrollingDanmakuOverlay(
@@ -618,28 +705,33 @@ fun PlayerScreen(
               }
             }
 
-            PlayerSideControlsOverlay(
-              fullscreen = fullscreen,
-              showFullscreen = isVideoAspectKnown && !isVerticalVideo,
-              onToggleFullscreen = {
-                if (fullscreen) {
-                  fullscreen = false
-                  fullscreenEntry = if (isLandscapeLayout) FullscreenEntry.ManualOff else FullscreenEntry.None
-                } else {
-                  fullscreen = true
-                  fullscreenEntry = FullscreenEntry.Manual
-                }
-              },
-              onOpenSettings = { showSettings = true },
-              onReload = { reloadUrl() },
-              modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 16.dp),
-            )
+            // 画中画模式下隐藏所有控制按钮
+            if (!PipBridge.isInPipMode) {
+              PlayerSideControlsOverlay(
+                fullscreen = fullscreen,
+                audioMode = audioMode,
+                showFullscreen = isVideoAspectKnown && !isVerticalVideo,
+                onToggleFullscreen = {
+                  if (fullscreen) {
+                    fullscreen = false
+                    fullscreenEntry = if (isLandscapeLayout) FullscreenEntry.ManualOff else FullscreenEntry.None
+                  } else {
+                    fullscreen = true
+                    fullscreenEntry = FullscreenEntry.Manual
+                  }
+                },
+                onToggleAudioMode = { audioMode = !audioMode },
+                onOpenSettings = { showSettings = true },
+                onReload = { reloadUrl() },
+                modifier = Modifier
+                  .align(Alignment.CenterEnd)
+                  .padding(end = 16.dp),
+              )
+            }
           }
         }
 
-        if (!fullscreen && !verticalFullBleed) {
+        if (!fullscreen && !verticalFullBleed && !audioMode) {
           if (canShowDanmaku && isHorizontalVideo) {
             HubDanmakuPanel(
               messages = danmakuMessages,
@@ -675,6 +767,23 @@ fun PlayerScreen(
       ModalBottomSheet(onDismissRequest = { showSettings = false }) {
         settingsContent()
       }
+    }
+
+    // 定时关闭对话框
+    if (showSleepTimerDialog) {
+      SleepTimerDialog(
+        isActive = isSleepTimerActive,
+        remainingText = if (isSleepTimerActive) sleepTimerManager.getRemainingDetailText() else null,
+        onStart = { minutes ->
+          sleepTimerManager.start(minutes) {
+            // 定时到期：暂停播放，保持音频模式界面
+            audioPlaying = false
+            AudioServiceBridge.updatePlaybackState(false)
+          }
+        },
+        onCancel = { sleepTimerManager.cancel() },
+        onDismiss = { showSleepTimerDialog = false },
+      )
     }
   }
 }
@@ -947,8 +1056,10 @@ private fun PlayerHeader(
 @Composable
 private fun PlayerSideControlsOverlay(
   fullscreen: Boolean,
+  audioMode: Boolean,
   showFullscreen: Boolean,
   onToggleFullscreen: () -> Unit,
+  onToggleAudioMode: () -> Unit,
   onOpenSettings: () -> Unit,
   onReload: () -> Unit,
   modifier: Modifier = Modifier,
@@ -963,6 +1074,7 @@ private fun PlayerSideControlsOverlay(
     if (showFullscreen) {
       ControlFab(icon = Icons.Default.FullscreenExit.takeIf { fullscreen } ?: Icons.Default.Fullscreen, onClick = onToggleFullscreen)
     }
+    ControlFab(icon = Icons.Default.Headphones, onClick = onToggleAudioMode, tint = if (audioMode) MaterialTheme.colorScheme.primary else null)
   }
 }
 
@@ -971,6 +1083,7 @@ private fun ControlFab(
   icon: androidx.compose.ui.graphics.vector.ImageVector,
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
+  tint: Color? = null,
 ) {
   Surface(
     modifier = modifier.size(38.dp).clip(CircleShape).clickable(onClick = onClick),
@@ -985,7 +1098,7 @@ private fun ControlFab(
         modifier = Modifier.size(25.dp),
         imageVector = icon,
         contentDescription = null,
-        tint = Color.White.copy(alpha = 0.92f),
+        tint = tint ?: Color.White.copy(alpha = 0.92f),
       )
     }
   }

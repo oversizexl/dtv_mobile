@@ -25,6 +25,7 @@ actual fun StreamPlayer(
   fullscreen: Boolean,
   liveMode: Boolean,
   zoomToFill: Boolean,
+  paused: Boolean,
   onVideoAspectRatioChanged: (Float?) -> Unit,
   onError: (String) -> Unit,
   modifier: Modifier,
@@ -59,12 +60,17 @@ actual fun StreamPlayer(
     }
   }
 
+  // 控制播放/暂停
+  DisposableEffect(paused) {
+    player.playWhenReady = !paused
+    onDispose {}
+  }
+
   DisposableEffect(player, url) {
     val listener = object : Player.Listener {
       override fun onPlayerError(error: PlaybackException) {
         AppLog.e("DTV-Player", "ExoPlayer error url=$url code=${error.errorCodeName}", error)
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-          // live HLS sometimes falls behind; reset and retry
           runCatching {
             player.seekToDefaultPosition()
             player.prepare()
@@ -77,7 +83,6 @@ actual fun StreamPlayer(
           .firstOrNull { it.contains("Invalid input to toASCII") }
 
         if (causeMsg != null && url.startsWith("https://")) {
-          // Workaround for some CDN hosts containing '_' which breaks IDN/SNI on Android.
           AppLog.w("DTV-Player", "retrying with http due to toASCII failure. url=$url")
           onError("__retry_http__:" + url.replaceFirst("https://", "http://"))
           return
@@ -139,14 +144,15 @@ actual fun StreamPlayer(
         controllerAutoShow = false
         setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
         resizeMode = if (zoomToFill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
-        // Keep screen on during playback (some Android 16 devices will otherwise follow a short system timeout).
-        keepScreenOn = true
+        // 音频模式（paused）时允许熄屏，节省电量
+        keepScreenOn = !paused
         this.player = player
       }
     },
     update = { view ->
       view.resizeMode = if (zoomToFill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
       view.useController = false
+      view.keepScreenOn = !paused
       view.controllerAutoShow = false
       view.keepScreenOn = true
       if (view.player !== player) {
