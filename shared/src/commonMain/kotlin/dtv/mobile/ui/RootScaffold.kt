@@ -165,7 +165,7 @@ fun RootScaffold(appState: AppState) {
       }
     },
     bottomBar = {
-      if (appState.currentScreen != Screen.Sync && !(appState.currentScreen == Screen.Player && appState.playerFullscreen)) {
+      if (appState.currentScreen != Screen.Sync && appState.currentScreen != Screen.Player) {
         PlatformBottomBar(
           selectedScreen = appState.dockSelectedScreen,
           selectedPlatform = appState.selectedPlatform,

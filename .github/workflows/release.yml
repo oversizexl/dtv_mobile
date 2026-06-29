@@ -1,0 +1,160 @@
+name: Release Android APK
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag, for example v0.1.2"
+        required: false
+        type: string
+      prerelease:
+        description: "Mark this release as prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        env:
+          INPUT_TAG_NAME: ${{ github.event.inputs.tag_name || '' }}
+        run: |
+          set -euo pipefail
+
+          release_tag="${INPUT_TAG_NAME:-${GITHUB_REF_NAME}}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -z "${INPUT_TAG_NAME}" && "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            echo "workflow_dispatch requires tag_name unless it is run from a tag ref." >&2
+            exit 1
+          fi
+
+          echo "RELEASE_TAG=${release_tag}" >> "${GITHUB_ENV}"
+
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+
+          target_ref="HEAD"
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            target_ref="${RELEASE_TAG}"
+          fi
+
+          previous_tag="$(
+            git tag --sort=-creatordate |
+              awk -v current="${RELEASE_TAG}" '$0 != current' |
+              while read -r tag; do
+                if git merge-base --is-ancestor "${tag}" "${target_ref}"; then
+                  echo "${tag}"
+                  break
+                fi
+              done
+          )"
+
+          if [[ -n "${previous_tag}" ]]; then
+            log_range="${previous_tag}..${target_ref}"
+          else
+            log_range="${target_ref}"
+          fi
+
+          {
+            echo "### 主要更新内容："
+            echo
+            git log --no-merges --pretty=format:'%s' "${log_range}" |
+              sed '/^[[:space:]]*$/d' |
+              awk '!seen[$0]++ { print "* " $0 }'
+          } > release-notes.md
+
+          if ! grep -q '^\* ' release-notes.md; then
+            echo "* 本次发布包含稳定性优化和问题修复" >> release-notes.md
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.1.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Configure release signing
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${ANDROID_KEYSTORE_BASE64}" && -n "${ANDROID_KEYSTORE_PASSWORD}" && -n "${ANDROID_KEY_ALIAS}" && -n "${ANDROID_KEY_PASSWORD}" ]]; then
+            echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > androidApp/release.keystore
+            cat > androidApp/keystore.properties <<EOF
+          storeFile=release.keystore
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          storeType=pkcs12
+          EOF
+            echo "signed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Release signing secrets are incomplete. Building debug APK asset instead." >&2
+            echo "signed=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build APK
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ steps.signing.outputs.signed }}" == "true" ]]; then
+            ./gradlew :androidApp:assembleRelease
+          else
+            ./gradlew :androidApp:assembleDebug
+          fi
+
+      - name: Collect release assets
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-assets
+          if [[ "${{ steps.signing.outputs.signed }}" == "true" ]]; then
+            cp androidApp/build/outputs/apk/release/*.apk "release-assets/dtv-mobile-${RELEASE_TAG}.apk"
+          else
+            cp androidApp/build/outputs/apk/debug/*.apk "release-assets/dtv-mobile-${RELEASE_TAG}-debug.apk"
+          fi
+
+          (cd release-assets && shasum -a 256 *.apk > SHA256SUMS.txt)
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: DTV Mobile ${{ env.RELEASE_TAG }}
+          body_path: release-notes.md
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease == 'true' }}
+          files: release-assets/*

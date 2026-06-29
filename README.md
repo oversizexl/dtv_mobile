@@ -30,6 +30,26 @@
 - 同步：局域网共享/导入（mDNS 发现、手动输入、扫码导入），增量同步关注、分区订阅、屏蔽词
 - 主题：浅色 / 深色 / 跟随系统
 
+## 发布 Release
+
+仓库内置 GitHub Actions 发布流程：推送 `v*` tag 时会自动构建 APK、生成 GitHub Release，并上传 APK 与 `SHA256SUMS.txt` 校验文件。Release 正文会自动收集上一个 tag 到当前 tag 之间的 commit subject，并生成固定格式的 `### 主要更新内容：` 列表。
+
+```bash
+git tag v0.1.2
+git push origin v0.1.2
+```
+
+也可以在 GitHub Actions 页面手动运行 `Release Android APK`，填写 `tag_name`（例如 `v0.1.2`）后生成对应 Release。
+
+如需产出正式可安装的 release APK，请在仓库 Settings -> Secrets and variables -> Actions 中配置以下 Secrets：
+
+- `ANDROID_KEYSTORE_BASE64`：release keystore 文件的 Base64 内容
+- `ANDROID_KEYSTORE_PASSWORD`：keystore 密码
+- `ANDROID_KEY_ALIAS`：签名 key alias
+- `ANDROID_KEY_PASSWORD`：签名 key 密码
+
+未配置完整签名 Secrets 时，Actions 会退回生成 debug APK 作为 Release Asset，方便测试下载流程。
+
 ## 说明
 
 - 本项目仅用于学习与技术交流

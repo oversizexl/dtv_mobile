@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -69,6 +70,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -120,6 +122,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import kotlin.math.ceil
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,6 +148,8 @@ fun PlayerScreen(
   var videoReady by remember(streamer?.roomId) { mutableStateOf(false) }
   var fullscreen by remember(streamer?.roomId) { mutableStateOf(false) }
   var fullscreenEntry by remember(streamer?.roomId) { mutableStateOf(FullscreenEntry.None) }
+  var sideControlsVisible by remember(streamer?.roomId) { mutableStateOf(true) }
+  var sideControlsRevealTick by remember(streamer?.roomId) { mutableIntStateOf(0) }
 
   // 音频模式
   var audioMode by remember(streamer?.roomId) { mutableStateOf(false) }
@@ -211,6 +216,12 @@ fun PlayerScreen(
   }
   LaunchedEffect(fullscreen) {
     appState.playerFullscreen = fullscreen
+  }
+
+  LaunchedEffect(streamer?.roomId, sideControlsRevealTick) {
+    sideControlsVisible = true
+    delay(3_000)
+    sideControlsVisible = false
   }
 
   LaunchedEffect(streamer?.roomId) {
@@ -327,6 +338,12 @@ fun PlayerScreen(
       loading = false
     }
   }
+
+  fun revealSideControls() {
+    sideControlsVisible = true
+    sideControlsRevealTick += 1
+  }
+
   BoxWithConstraints(
     modifier = Modifier
       .fillMaxSize()
@@ -585,6 +602,13 @@ fun PlayerScreen(
                 },
                 modifier = Modifier.fillMaxSize(),
               )
+              Box(
+                modifier = Modifier
+                  .fillMaxSize()
+                  .pointerInput(streamer?.roomId) {
+                    detectTapGestures(onTap = { revealSideControls() })
+                  },
+              )
             } else {
               Box(
                 modifier = Modifier
@@ -707,26 +731,33 @@ fun PlayerScreen(
 
             // 画中画模式下隐藏所有控制按钮
             if (!PipBridge.isInPipMode) {
-              PlayerSideControlsOverlay(
-                fullscreen = fullscreen,
-                audioMode = audioMode,
-                showFullscreen = isVideoAspectKnown && !isVerticalVideo,
-                onToggleFullscreen = {
-                  if (fullscreen) {
-                    fullscreen = false
-                    fullscreenEntry = if (isLandscapeLayout) FullscreenEntry.ManualOff else FullscreenEntry.None
-                  } else {
-                    fullscreen = true
-                    fullscreenEntry = FullscreenEntry.Manual
-                  }
-                },
-                onToggleAudioMode = { audioMode = !audioMode },
-                onOpenSettings = { showSettings = true },
-                onReload = { reloadUrl() },
+              AnimatedVisibility(
+                visible = sideControlsVisible,
+                enter = fadeIn(animationSpec = tween(durationMillis = 140)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 140)),
                 modifier = Modifier
                   .align(Alignment.CenterEnd)
                   .padding(end = 16.dp),
-              )
+                label = "player_side_controls",
+              ) {
+                PlayerSideControlsOverlay(
+                  fullscreen = fullscreen,
+                  audioMode = audioMode,
+                  showFullscreen = isVideoAspectKnown && !isVerticalVideo,
+                  onToggleFullscreen = {
+                    if (fullscreen) {
+                      fullscreen = false
+                      fullscreenEntry = if (isLandscapeLayout) FullscreenEntry.ManualOff else FullscreenEntry.None
+                    } else {
+                      fullscreen = true
+                      fullscreenEntry = FullscreenEntry.Manual
+                    }
+                  },
+                  onToggleAudioMode = { audioMode = !audioMode },
+                  onOpenSettings = { showSettings = true },
+                  onReload = { reloadUrl() },
+                )
+              }
             }
           }
         }

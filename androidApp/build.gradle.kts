@@ -50,6 +50,7 @@ android {
         storePassword = keystoreProperties.getProperty("storePassword")
         keyAlias = keystoreProperties.getProperty("keyAlias")
         keyPassword = keystoreProperties.getProperty("keyPassword")
+        storeType = keystoreProperties.getProperty("storeType", "pkcs12")
       }
     }
   }
@@ -57,7 +58,9 @@ android {
   buildTypes {
     getByName("release") {
       isMinifyEnabled = false
-      signingConfig = signingConfigs.getByName("release")
+      if (hasReleaseKeystore) {
+        signingConfig = signingConfigs.getByName("release")
+      }
     }
   }
 }
