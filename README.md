@@ -37,7 +37,7 @@
 
 ## 发布 Release
 
-仓库内置 GitHub Actions 发布流程：推送 `v*` tag 时会自动构建 APK、生成 GitHub Release，并上传 APK 与 `SHA256SUMS.txt` 校验文件。Release 正文会自动收集上一个 tag 到当前 tag 之间的 commit subject，并生成固定格式的 `### 主要更新内容：` 列表；同时会把 tag 同步写入 APK 的 `versionName` / `versionCode`。
+仓库内置 GitHub Actions 发布流程：推送 `v*` tag 时会自动构建 APK、生成 GitHub Release，并上传 APK 与 `SHA256SUMS.txt` 校验文件；同时也会在 Actions 运行页的 Artifacts 区域提供 APK 下载。Release 正文会自动收集上一个 tag 到当前 tag 之间的 commit subject，并生成固定格式的 `### 主要更新内容：` 列表；同时会把 tag 同步写入 APK 的 `versionName` / `versionCode`。
 
 ```bash
 git tag v0.1.3

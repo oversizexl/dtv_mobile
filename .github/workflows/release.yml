@@ -160,6 +160,14 @@ jobs:
 
           (cd release-assets && shasum -a 256 *.apk > SHA256SUMS.txt)
 
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtv-mobile-${{ env.RELEASE_TAG }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
