@@ -1,21 +1,21 @@
 pluginManagement {
   repositories {
-    // Mirrors (helpful in regions where dl.google.com is unreliable)
-    maven("https://maven.aliyun.com/repository/google")
-    maven("https://maven.aliyun.com/repository/gradle-plugin")
-    maven("https://maven.aliyun.com/repository/public")
     google()
     mavenCentral()
     gradlePluginPortal()
+    // Mirrors as fallback for local networks where official repositories are unreliable.
+    maven("https://maven.aliyun.com/repository/google")
+    maven("https://maven.aliyun.com/repository/gradle-plugin")
+    maven("https://maven.aliyun.com/repository/public")
   }
 }
 
 dependencyResolutionManagement {
   repositories {
-    maven("https://maven.aliyun.com/repository/google")
-    maven("https://maven.aliyun.com/repository/public")
     google()
     mavenCentral()
+    maven("https://maven.aliyun.com/repository/google")
+    maven("https://maven.aliyun.com/repository/public")
   }
 }
 
