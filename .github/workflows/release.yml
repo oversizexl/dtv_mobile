@@ -55,21 +55,20 @@ jobs:
 
           git fetch --tags --force
 
-          target_ref="HEAD"
-          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null; then
             target_ref="${RELEASE_TAG}"
+          else
+            target_ref="HEAD"
           fi
 
-          previous_tag="$(
-            git tag --sort=-creatordate |
-              awk -v current="${RELEASE_TAG}" '$0 != current' |
-              while read -r tag; do
-                if git merge-base --is-ancestor "${tag}" "${target_ref}"; then
-                  echo "${tag}"
-                  break
-                fi
-              done
-          )"
+          mapfile -t version_tags < <(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
+          previous_tag=""
+          for index in "${!version_tags[@]}"; do
+            if [[ "${version_tags[index]}" == "${RELEASE_TAG}" && "${index}" -gt 0 ]]; then
+              previous_tag="${version_tags[index - 1]}"
+              break
+            fi
+          done
 
           if [[ -n "${previous_tag}" ]]; then
             log_range="${previous_tag}..${target_ref}"
@@ -82,6 +81,8 @@ jobs:
             echo
             git log --no-merges --pretty=format:'%s' "${log_range}" |
               sed '/^[[:space:]]*$/d' |
+              grep -Ev '^(docs|ci|chore|style|test|build)(\(|:)' |
+              grep -Ev '^Merge ' |
               awk '!seen[$0]++ { print "* " $0 }'
           } > release-notes.md
 
@@ -168,11 +169,28 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      - name: Clean existing release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id' 2>/dev/null || true)"
+          if [[ -z "${release_id}" || "${release_id}" == "null" ]]; then
+            exit 0
+          fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets" --paginate --jq '.[].id' |
+            while read -r asset_id; do
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" >/dev/null
+            done
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: DTV Mobile ${{ env.RELEASE_TAG }}
           body_path: release-notes.md
+          overwrite: true
           prerelease: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease == 'true' }}
           files: release-assets/*
