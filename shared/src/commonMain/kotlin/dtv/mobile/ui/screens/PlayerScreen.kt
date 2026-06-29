@@ -731,32 +731,35 @@ fun PlayerScreen(
 
             // 画中画模式下隐藏所有控制按钮
             if (!PipBridge.isInPipMode) {
-              AnimatedVisibility(
-                visible = sideControlsVisible,
-                enter = fadeIn(animationSpec = tween(durationMillis = 140)),
-                exit = fadeOut(animationSpec = tween(durationMillis = 140)),
+              Box(
                 modifier = Modifier
                   .align(Alignment.CenterEnd)
                   .padding(end = 16.dp),
-                label = "player_side_controls",
               ) {
-                PlayerSideControlsOverlay(
-                  fullscreen = fullscreen,
-                  audioMode = audioMode,
-                  showFullscreen = isVideoAspectKnown && !isVerticalVideo,
-                  onToggleFullscreen = {
-                    if (fullscreen) {
-                      fullscreen = false
-                      fullscreenEntry = if (isLandscapeLayout) FullscreenEntry.ManualOff else FullscreenEntry.None
-                    } else {
-                      fullscreen = true
-                      fullscreenEntry = FullscreenEntry.Manual
-                    }
-                  },
-                  onToggleAudioMode = { audioMode = !audioMode },
-                  onOpenSettings = { showSettings = true },
-                  onReload = { reloadUrl() },
-                )
+                androidx.compose.animation.AnimatedVisibility(
+                  visible = sideControlsVisible,
+                  enter = fadeIn(animationSpec = tween(durationMillis = 140)),
+                  exit = fadeOut(animationSpec = tween(durationMillis = 140)),
+                  label = "player_side_controls",
+                ) {
+                  PlayerSideControlsOverlay(
+                    fullscreen = fullscreen,
+                    audioMode = audioMode,
+                    showFullscreen = isVideoAspectKnown && !isVerticalVideo,
+                    onToggleFullscreen = {
+                      if (fullscreen) {
+                        fullscreen = false
+                        fullscreenEntry = if (isLandscapeLayout) FullscreenEntry.ManualOff else FullscreenEntry.None
+                      } else {
+                        fullscreen = true
+                        fullscreenEntry = FullscreenEntry.Manual
+                      }
+                    },
+                    onToggleAudioMode = { audioMode = !audioMode },
+                    onOpenSettings = { showSettings = true },
+                    onReload = { reloadUrl() },
+                  )
+                }
               }
             }
           }
