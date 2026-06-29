@@ -42,7 +42,12 @@ jobs:
             exit 1
           fi
 
+          version_name="${release_tag#v}"
+          version_code="$(printf '%s' "${version_name}" | awk -F. '{printf "%d", ($1 * 10000) + ($2 * 100) + $3}')"
+
           echo "RELEASE_TAG=${release_tag}" >> "${GITHUB_ENV}"
+          echo "APP_VERSION_NAME=${version_name}" >> "${GITHUB_ENV}"
+          echo "APP_VERSION_CODE=${version_code}" >> "${GITHUB_ENV}"
 
       - name: Generate release notes
         run: |
@@ -131,10 +136,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          gradle_args=(
+            "-PappVersionName=${APP_VERSION_NAME}"
+            "-PappVersionCode=${APP_VERSION_CODE}"
+          )
+
           if [[ "${{ steps.signing.outputs.signed }}" == "true" ]]; then
-            ./gradlew :androidApp:assembleRelease
+            ./gradlew :androidApp:assembleRelease "${gradle_args[@]}"
           else
-            ./gradlew :androidApp:assembleDebug
+            ./gradlew :androidApp:assembleDebug "${gradle_args[@]}"
           fi
 
       - name: Collect release assets

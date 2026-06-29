@@ -10,7 +10,12 @@
 
 ---
 
-## 新增特性（v0.1.2）
+## 新增特性（v0.1.3）
+
+- **播放页优化**：进入直播间后隐藏底部 Tab；播放器快捷按钮 3 秒自动隐藏，点击视频重新显示
+- **自动发布**：GitHub Actions 支持按 tag 构建 Release，并自动同步 App 版本号
+
+## 历史特性（v0.1.2）
 
 - **抖音链接解析**：搜索框支持直接粘贴抖音直播间链接（短链接 / 直播页面链接），自动提取房间号
 - **音频模式**：播放界面点击耳机图标进入，展示仿网易云音乐 CD 旋转封面，支持播放/暂停
@@ -32,14 +37,14 @@
 
 ## 发布 Release
 
-仓库内置 GitHub Actions 发布流程：推送 `v*` tag 时会自动构建 APK、生成 GitHub Release，并上传 APK 与 `SHA256SUMS.txt` 校验文件。Release 正文会自动收集上一个 tag 到当前 tag 之间的 commit subject，并生成固定格式的 `### 主要更新内容：` 列表。
+仓库内置 GitHub Actions 发布流程：推送 `v*` tag 时会自动构建 APK、生成 GitHub Release，并上传 APK 与 `SHA256SUMS.txt` 校验文件。Release 正文会自动收集上一个 tag 到当前 tag 之间的 commit subject，并生成固定格式的 `### 主要更新内容：` 列表；同时会把 tag 同步写入 APK 的 `versionName` / `versionCode`。
 
 ```bash
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
-也可以在 GitHub Actions 页面手动运行 `Release Android APK`，填写 `tag_name`（例如 `v0.1.2`）后生成对应 Release。
+也可以在 GitHub Actions 页面手动运行 `Release Android APK`，填写 `tag_name`（例如 `v0.1.3`）后生成对应 Release。
 
 如需产出正式可安装的 release APK，请在仓库 Settings -> Secrets and variables -> Actions 中配置以下 Secrets：
 

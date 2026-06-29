@@ -15,6 +15,9 @@ val hasReleaseKeystore = keystorePropertiesFile.exists().also { exists ->
   }
 }
 
+val appVersionName = project.findProperty("appVersionName")?.toString() ?: "0.1.3"
+val appVersionCode = project.findProperty("appVersionCode")?.toString()?.toIntOrNull() ?: 103
+
 android {
   namespace = "dtv.mobile.android"
   compileSdk = 36
@@ -24,8 +27,8 @@ android {
     applicationId = "dtv.mobile"
     minSdk = 26
     targetSdk = 36
-    versionCode = 2
-    versionName = "0.1.2"
+    versionCode = appVersionCode
+    versionName = appVersionName
   }
 
   buildFeatures { compose = true }
